@@ -220,7 +220,7 @@ def goStraight(master: mavutil.mavfile,dist,alt) :
       delaySec2Cnt(dist/2)
 
 # 機体への接続（単体実行用：親スクリプトで接続していない時実行）
-# SITL : tcp.0.0.1:5762
+# SITL : tcp:127.0.0.1:5762
 # mavlink-routerd : 127.0.0.1:14551
 def setup() -> mavutil.mavfile:
   # master: mavutil.mavfile = mavutil.mavlink_connection(
