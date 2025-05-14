@@ -4,6 +4,8 @@
 # flight()は0.2秒周期で呼び出される前提で状態遷移させて制御する
 # ※0.2秒の根拠は実験の結果モード変化検出できる最長時間のため
 #
+# SITLで動作させる場合はSIM_SPEEDUPを1.0で実行しないと挙動不審になるので注意
+#
 # 以下を参考に処理する
 # https://mavlink.io/en/mavgen_python/howto_requestmessages.html
 # https://mavlink.io/en/messages/common.html
@@ -99,6 +101,9 @@ def reboot(master: mavutil.mavfile):
     master.mav.command_long_send(master.target_system, master.target_component,
         mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN, 0,
         1, 0, 0, 0, 0, 0, 0)
+    ack = master.recv_match(type='COMMAND_ACK', blocking=True, timeout=10)
+    if ack :
+      print("reboot ack :",ack)
     flcnt = 0
 
 # 高度が不正かどうかを判定する
@@ -116,7 +121,27 @@ def isInvalidFly(master: mavutil.mavfile) :
     return False
 
 def isPreArmOk(master: mavutil.mavfile) :
-  return True
+  master.mav.command_long_send(master.target_system, master.target_component,
+        mavutil.mavlink.MAV_CMD_RUN_PREARM_CHECKS, 0,
+        0, 0, 0, 0, 0, 0, 0)
+  ack = master.recv_match(type='COMMAND_ACK', blocking=True, timeout=10)
+  print("PREARM CHECK Command Ack :",ack)
+  if ack :
+    print("ack.command : ",ack.command)
+    print("ack.result : ",ack.result)
+  else :
+    return False
+  if ack.command == mavutil.mavlink.MAV_CMD_RUN_PREARM_CHECKS and ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
+    oneshotReq(master, mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS)
+    recv = master.recv_match(type='SYS_STATUS', blocking=True, timeout=10)
+    if recv :
+      print("SYS_STATUS recv : ",recv)
+      # TODO : SYS_STSTUSの各情報を確認して最終判断する
+      return True
+    else :
+      return False
+  else :
+    return False
 
 def isStable(master: mavutil.mavfile) :
   global stableCnt
@@ -171,6 +196,18 @@ def intervalReq(master: mavutil.mavfile, intsec=0.1, msgid=mavutil.mavlink.MAVLI
     master.target_system, master.target_component,
     mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
     0, msgid, intusec, 0, 0, 0, 0, 0)
+  ack = master.recv_match(type='COMMAND_ACK', blocking=True, timeout=10)
+  if ack :
+    print("intervalReq ack :",ack)
+
+def oneshotReq(master: mavutil.mavfile, msgid=mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT):
+  master.mav.command_long_send(
+    master.target_system, master.target_component,
+    mavutil.mavlink.MAV_CMD_REQUEST_MESSAGE,
+    0, msgid, 0, 0, 0, 0, 0, 0)
+  ack = master.recv_match(type='COMMAND_ACK', blocking=True, timeout=10)
+  if ack :
+    print("oneshotReq ack :",ack)
 
 def delaySec2Cnt(sec):
   global tick
@@ -234,6 +271,18 @@ def setup() -> mavutil.mavfile:
 
   return master
 
+def isCopter(type = mavutil.mavlink.MAV_TYPE_QUADROTOR):
+    if type == mavutil.mavlink.MAV_TYPE_QUADROTOR :
+      return True
+    elif type == mavutil.mavlink.MAV_TYPE_HEXAROTOR :
+      return True
+    elif type == mavutil.mavlink.MAV_TYPE_OCTOROTOR :
+      return True
+    elif type == mavutil.mavlink.MAV_TYPE_GENERIC_MULTIROTOR :
+      return True
+    else :
+      return Faluse
+
 def flight(master: mavutil.mavfile, delay = 0.2):
     global flcnt
     global flstate
@@ -247,9 +296,16 @@ def flight(master: mavutil.mavfile, delay = 0.2):
     try:
       #print('recv_match()',flcnt,flstate)
       recv = master.recv_match(type='HEARTBEAT', blocking=True)
+      #print("HEARTBEAT recv : ",recv)
       #print("recv.system_status :",recv.system_status)
       #print("mavutil.mavlink.MAV_STATE_ACTIVE :",mavutil.mavlink.MAV_STATE_ACTIVE)
       #print("mavutil.mavlink.MAV_STATE_STANDBY :",mavutil.mavlink.MAV_STATE_STANDBY)
+      if isCopter(recv.type) == False :
+        # HEARTBEATで取得したtypeが有効でコプターの時のみ処理を行う
+        return
+
+      #print("HEARTBEAT recv : ",recv)
+      #print("base_mode :",bin(recv.base_mode),mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,mavutil.mavlink.MAV_MODE_FLAG_GUIDED_ENABLED)
       if recv.system_status == mavutil.mavlink.MAV_STATE_ACTIVE :
         if activeCnt<100 :
           activeCnt = activeCnt + 1
@@ -304,7 +360,7 @@ def flight(master: mavutil.mavfile, delay = 0.2):
       elif isPreArmOk(master) :
         master.arducopter_arm()
         ack = master.recv_match(type='COMMAND_ACK', blocking=True, timeout=10)
-        if ack and ack.command == mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM and ack.result == 0:
+        if ack and ack.command == mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM and ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
           # ARM確認OK
           flstate = flstate + 1
           print('ARMED')
@@ -318,15 +374,21 @@ def flight(master: mavutil.mavfile, delay = 0.2):
           master.target_system, master.target_component,
           mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
           0, 0, 0, 0, 0, 0, 0, target_alt)
-      flstate = flstate + 1
-      delaySec2Cnt(5)
+      ack = master.recv_match(type='COMMAND_ACK', blocking=True, timeout=10)
+      if ack and ack.command == mavutil.mavlink.MAV_CMD_NAV_TAKEOFF and ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
+        flstate = flstate + 1
+        print('TAKEOFF')
+        delaySec2Cnt(5)
+      else :
+        print('TAKEOFF FAILED')
+        flstate = STATE_INVALID #無効にする 
     elif flstate == 4 :
       # 離陸完了待ち
       if isStable(master) :
           # 離陸OK
           flstate = flstate + 1
           delaySec2Cnt(5)
-          print('TAKEOFF 5m')
+          print('TAKEOFF done :',target_alt)
     elif flstate == 5 :
       # ホバリング
       flstate = doHobbering(master,flstate)
