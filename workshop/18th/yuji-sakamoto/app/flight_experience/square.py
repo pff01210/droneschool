@@ -136,6 +136,9 @@ def isPreArmOk(master: mavutil.mavfile) :
     recv = master.recv_match(type='SYS_STATUS', blocking=True, timeout=10)
     if recv :
       print("SYS_STATUS recv : ",recv)
+      print("SYS_STATUS recv.onboard_control_sensors_present: ",bin(recv.onboard_control_sensors_present))
+      print("SYS_STATUS recv.onboard_control_sensors_enabled: ",bin(recv.onboard_control_sensors_enabled))
+      print("SYS_STATUS recv.onboard_control_sensors_health : ",bin(recv.onboard_control_sensors_health))
       # TODO : SYS_STSTUSの各情報を確認して最終判断する
       return True
     else :
