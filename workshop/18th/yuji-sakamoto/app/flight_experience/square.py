@@ -120,6 +120,7 @@ def isInvalidFly(master: mavutil.mavfile) :
   else :
     return False
 
+# GUIDEDモード時のプリアームチェックを行う
 def isPreArmOk(master: mavutil.mavfile) :
   master.mav.command_long_send(master.target_system, master.target_component,
         mavutil.mavlink.MAV_CMD_RUN_PREARM_CHECKS, 0,
@@ -131,17 +132,27 @@ def isPreArmOk(master: mavutil.mavfile) :
     print("ack.result : ",ack.result)
   else :
     return False
-  if ack.command == mavutil.mavlink.MAV_CMD_RUN_PREARM_CHECKS and ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
+  if (ack.command == mavutil.mavlink.MAV_CMD_RUN_PREARM_CHECKS and
+      ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED) :
     oneshotReq(master, mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS)
     recv = master.recv_match(type='SYS_STATUS', blocking=True, timeout=10)
     if recv :
       print("SYS_STATUS recv : ",recv)
-      print("SYS_STATUS recv.onboard_control_sensors_present: {:#034b}".format(recv.onboard_control_sensors_present))
-      print("SYS_STATUS recv.onboard_control_sensors_enabled: {:#034b}".format(recv.onboard_control_sensors_enabled))
-      print("SYS_STATUS recv.onboard_control_sensors_health : {:#034b}".format(recv.onboard_control_sensors_health))
-      print("MAV_SYS_STATUS_PREARM_CHECK                    : {:#034b}".format(mavutil.mavlink.MAV_SYS_STATUS_PREARM_CHECK))
+      print("SYS_STATUS recv.onboard_control_sensors_present: {:#034b}"
+        .format(recv.onboard_control_sensors_present))
+      print("SYS_STATUS recv.onboard_control_sensors_enabled: {:#034b}"
+        .format(recv.onboard_control_sensors_enabled))
+      print("SYS_STATUS recv.onboard_control_sensors_health : {:#034b}"
+        .format(recv.onboard_control_sensors_health))
+      print("MAV_SYS_STATUS_PREARM_CHECK                    : {:#034b}"
+        .format(mavutil.mavlink.MAV_SYS_STATUS_PREARM_CHECK))
       # SYS_STSTUSのonboard_control_sensor_healthをチェックして判断する
-      return recv.onboard_control_sensors_health & mavutil.mavlink.MAV_SYS_STATUS_PREARM_CHECK
+      # 判定途中でモードが切り替わっていると動作不正となるので再度モードをチェック
+      if master.flightmode == 'GUIDED' :
+        return recv.onboard_control_sensors_health & mavutil.mavlink.MAV_SYS_STATUS_PREARM_CHECK
+      else :
+        print("Error : Invalid Mode Change")
+        return False
     else :
       return False
   else :
