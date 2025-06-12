@@ -57,7 +57,7 @@ def reqPrearmCheck(master: mavutil.mavfile) :
 #    print("ack.result : ",ack.result)
     if (ack.command == mavutil.mavlink.MAV_CMD_RUN_PREARM_CHECKS and
         ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED) :
-      oneshotReq(master, mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS)
+      intervalReq(master, 0.1, mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS)
       return True
     else :
       return False
