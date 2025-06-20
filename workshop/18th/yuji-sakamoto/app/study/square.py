@@ -39,7 +39,7 @@ keepYaw = 0   # 安定待ち時もしくはホバリング時に風に煽られ�
 STATE_LAND = 35
 STATE_INVALID = 37
 
-tick = 1
+tick = 1 #sleep時間に関わらずHEARTBEATでblockするので１秒をtickとする
 
 flight_mode_dict = {
     "STABILIZE": 0,
@@ -67,13 +67,25 @@ def deg2rad(deg) :
     return (deg*PAI)/180
 
 def get_current_flight_mode(master) -> str:
-    hb = master.recv_match(type='HEARTBEAT', blocking=True, timeout=1)
-    if not hb or not hasattr(hb, "custom_mode"):
-        return "UNKNOWN"
+    """
+    フライトコントローラ（component_id = 1）からの HEARTBEAT のみ受け入れて
+    現在のフライトモード名を返す（custom_mode -> モード名に変換）
+    """
+    from pymavlink import mavutil
 
-    mode_id = hb.custom_mode
-    mode_name = next((k for k, v in flight_mode_dict.items() if v == mode_id), f"UNKNOWN({mode_id})")
-    return mode_name
+    while True:
+        hb = master.recv_match(type='HEARTBEAT', blocking=True, timeout=1)
+        if hb is None:
+            return "UNKNOWN"
+        if hb.get_srcComponent() != 1:
+            continue  # フライトコントローラ以外は無視
+
+        if not hasattr(hb, "custom_mode"):
+            return "UNKNOWN"
+
+        mode_id = hb.custom_mode
+        mode_name = next((k for k, v in flight_mode_dict.items() if v == mode_id), f"UNKNOWN({mode_id})")
+        return mode_name
 
 # 機体方向維持
 # ※風に煽られても機首が変わらないようにする
@@ -312,18 +324,6 @@ def setup() -> mavutil.mavfile:
 
   return master
 
-def isCopter(type = mavutil.mavlink.MAV_TYPE_QUADROTOR):
-    if type == mavutil.mavlink.MAV_TYPE_QUADROTOR :
-      return True
-    elif type == mavutil.mavlink.MAV_TYPE_HEXAROTOR :
-      return True
-    elif type == mavutil.mavlink.MAV_TYPE_OCTOROTOR :
-      return True
-    elif type == mavutil.mavlink.MAV_TYPE_GENERIC_MULTIROTOR :
-      return True
-    else :
-      return Faluse
-
 def flight(master: mavutil.mavfile, delay = 1):
     global flcnt
     global flstate
@@ -335,18 +335,17 @@ def flight(master: mavutil.mavfile, delay = 1):
     tick = delay
     nowmode = get_current_flight_mode(master) 
     if lastmode != nowmode :
-      print(nowmode)
+      print("change :",nowmode)
       lastmode = nowmode
-    if nowmode == 'GUIDED' :
-      # GUIDEDに切り替わった初期状態
-      # GUIDEDへの切り替えはプロポなど外部からの操作で行う
-      if flstate == 0 :
+      return
+
+    if flstate == 0:
+      if nowmode == 'GUIDED' :
+        # GUIDEDに切り替わった初期状態
+        # GUIDEDへの切り替えはプロポなど外部からの操作で行う
         flstate = 1
         print('ACTIVATE GUIDED MODE FLIGHT')
-    elif nowmode != 'LAND' :
-      # GUIDED/LANDモード以外は状態初期化
-      flstate = 0
-    if flstate == 1 :
+    elif flstate == 1 :
       # 飛行制御処理開始
       flstate = flstate + 1
       print('FLIGHT CONTROL START')
@@ -545,6 +544,10 @@ def flight(master: mavutil.mavfile, delay = 1):
         print('着陸完了')
         master.arducopter_disarm()
         master.motors_disarmed_wait()
+    elif flstate == 37 :
+        #print("flstate : ",flstate)
+        if nowmode != 'LAND' :
+            flstate = 0
 
     flcnt = flcnt + 1
 
@@ -557,5 +560,5 @@ if __name__ == "__main__":
         #print('before')
         flight(master)
         #print('after')
-        time.sleep(1)
+        time.sleep(0.1)
 
