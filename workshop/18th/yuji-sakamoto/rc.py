@@ -3,7 +3,8 @@ import time
 import signal
 import RPi.GPIO as GPIO
 from pymavlink import mavutil
-from app.flight_experience.square import flight
+#from app.flight_experience.square import flight
+from app.study.square import flight
 
 pinno = 18
 
@@ -76,9 +77,9 @@ def main():
                 # LED消灯
                 GPIO.output(pinno, 0)
             cnt = cnt + 1
-            if( cnt % 5 ) == 0 :
+            if( cnt % 2 ) == 0 :
                 lcnt = lcnt + 1
-            time.sleep(0.2)
+            time.sleep(0.05)
 
     finally:
         signal.signal(signal.SIGTERM, signal. SIG_IGN)
