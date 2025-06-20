@@ -1,8 +1,6 @@
 # 一等無人航空機試験の「高度変化を伴うスクエア飛行」のルートを模擬して飛行させる
 # WayPintを使ったAUTO飛行ではなくGUIDEDで制御する
 #
-# flight()は0.2秒周期で呼び出される前提で状態遷移させて制御する
-# ※0.2秒の根拠は実験の結果モード変化検出できる最長時間のため
 #
 # SITLで動作させる場合はSIM_SPEEDUPを1.0で実行しないと挙動不審になるので注意
 #
@@ -32,8 +30,6 @@ stableCnt = 0
 lastYaw = 0
 lastAlt = 0
 stableCheck = 2
-isActive = False
-activeCnt = 0 # statusはstandbyモード時activeモードと交互に現れるので回数で判断するためのカウンタ
 VPASS = 30
 YAWPASS = 20
 keepYaw = 0   # 安定待ち時もしくはホバリング時に風に煽られても機首の向きを維持するための方向情報
@@ -43,7 +39,7 @@ keepYaw = 0   # 安定待ち時もしくはホバリング時に風に煽られ�
 STATE_LAND = 35
 STATE_INVALID = 37
 
-tick = 0.2
+tick = 1
 
 flight_mode_dict = {
     "STABILIZE": 0,
@@ -328,47 +324,19 @@ def isCopter(type = mavutil.mavlink.MAV_TYPE_QUADROTOR):
     else :
       return Faluse
 
-def flight(master: mavutil.mavfile, delay = 0.2):
+def flight(master: mavutil.mavfile, delay = 1):
     global flcnt
     global flstate
     global lastmode
     global nowmode
     global staytime
     global tick
-    global isActive
-    global activeCnt
     global keepYaw
     tick = delay
-    try:
-      #print('recv_match()',flcnt,flstate)
-      #recv = master.recv_match(type='HEARTBEAT', blocking=True)
-      #print("HEARTBEAT recv : ",recv)
-      #print("recv.system_status :",recv.system_status)
-      #print("mavutil.mavlink.MAV_STATE_ACTIVE :",mavutil.mavlink.MAV_STATE_ACTIVE)
-      #print("mavutil.mavlink.MAV_STATE_STANDBY :",mavutil.mavlink.MAV_STATE_STANDBY)
-      #if isCopter(recv.type) == False :
-      # HEARTBEATで取得したtypeが有効でコプターの時のみ処理を行う
-      # return
-
-      #print("HEARTBEAT recv : ",recv)
-      #print("base_mode :",bin(recv.base_mode),mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,mavutil.mavlink.MAV_MODE_FLAG_GUIDED_ENABLED)
-      if recv.system_status == mavutil.mavlink.MAV_STATE_ACTIVE :
-        if activeCnt<100 :
-          activeCnt = activeCnt + 1
-      elif recv.system_status == mavutil.mavlink.MAV_STATE_STANDBY :
-        activeCnt = 0
-      if activeCnt > 10 :
-        isActive = True
-      else :
-        isActive = False
-
-      #master.recv_match(type='SYS_STATUS',blocking=False)
-      nowmode = get_current_flight_mode(master) 
-      if lastmode != nowmode :
-        print(nowmode)
-        lastmode = nowmode
-    except:
-      pass
+    nowmode = get_current_flight_mode(master) 
+    if lastmode != nowmode :
+      print(nowmode)
+      lastmode = nowmode
     if nowmode == 'GUIDED' :
       # GUIDEDに切り替わった初期状態
       # GUIDEDへの切り替えはプロポなど外部からの操作で行う
@@ -388,12 +356,7 @@ def flight(master: mavutil.mavfile, delay = 0.2):
       print('Initial keepYaw :',keepYaw)
     elif flstate == 2 :
       # ARM
-      if isActive :
-        # GUIDEDに切り替えた時に既に飛行していたら無効にする(HEARTBEATでステータスチェック)
-        flstate = STATE_INVALID
-        isActive = False
-        print('FLIGHT CONTROL CANCEL')
-      elif isInvalidFly(master) :
+      if isInvalidFly(master) :
         # GUIDEDに切り替えたときに不正に高度の値がゼロ付近以外
         flstate = STATE_INVALID
         print('FLIGHT CONTROL ALTITUDE INVALID')
@@ -592,7 +555,7 @@ if __name__ == "__main__":
     intervalReq(master)  # GLOBAL_POSITION_INTインターバル要求
     while True:
         #print('before')
-        flight(master,0.2)
+        flight(master)
         #print('after')
-        time.sleep(0.2)
+        time.sleep(1)
 
