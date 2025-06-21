@@ -344,7 +344,7 @@ def flight(master: mavutil.mavfile, delay = 1):
         # GUIDEDに切り替わった初期状態
         # GUIDEDへの切り替えはプロポなど外部からの操作で行う
         flstate = 1
-        lrint('ACTIVATE GUIDED MODE FLIGHT')
+        print('ACTIVATE GUIDED MODE FLIGHT')
       elif nowmode == 'RTL' :
         reboot(master)
     elif flstate == 1 :
