@@ -546,7 +546,9 @@ def flight(master: mavutil.mavfile, delay = 1):
         master.motors_disarmed_wait()
     elif flstate == 37 :
         #print("flstate : ",flstate)
-        if nowmode != 'LAND' :
+        if nowmode == 'RTL' :
+            reboot(master)
+        elif nowmode != 'LAND' :
             flstate = 0
 
     flcnt = flcnt + 1
