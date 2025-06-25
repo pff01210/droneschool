@@ -60,11 +60,11 @@ def sig_handler(signum, frame) -> None:
     sys.exit(1)
 
 def main():
-    cnt = 0
     lcnt = 0
     signal.signal(signal.SIGTERM, sig_handler)
     try:
         master: mavutil.mavfile = setup()
+        lasttime = time.monotonic()
         while True:
             try:
               flight(master)
@@ -76,9 +76,10 @@ def main():
             else :
                 # LED消灯
                 GPIO.output(pinno, 0)
-            cnt = cnt + 1
-            if( cnt % 2 ) == 0 :
+            nowtime = time.monotonic()
+            if (nowtime - lasttime)>=1 :
                 lcnt = lcnt + 1
+                lasttime = nowtime
             time.sleep(0.05)
 
     finally:

@@ -29,10 +29,11 @@ INT_DISABLE = -1
 stableCnt = 0
 lastYaw = 0
 lastAlt = 0
-stableCheck = 2
+stableCheck = 5
 VPASS = 30
 YAWPASS = 20
 keepYaw = 0   # 安定待ち時もしくはホバリング時に風に煽られても機首の向きを維持するための方向情報
+lasttime = time.monotonic()
 
 # 状態遷移制御する場合の特別な状態番号のみ名前を付ける
 # ※enumを使うと行数を浪費するので省略
@@ -74,7 +75,7 @@ def get_current_flight_mode(master) -> str:
     from pymavlink import mavutil
 
     while True:
-        hb = master.recv_match(type='HEARTBEAT', blocking=True, timeout=1)
+        hb = master.recv_match(type='HEARTBEAT', blocking=True, timeout=2)
         if hb is None:
             return "UNKNOWN"
         if hb.get_srcComponent() != 1:
@@ -101,11 +102,13 @@ def keepingYaw(master: mavutil.mavfile) :
 # ホバリング中処理
 def doHobbering(master: mavutil.mavfile, cnt) :
     global staytime
+    global lasttime
     #print('doHobbering() staytime :',staytime, 'cnt :',cnt)
-    if staytime > 0 :
+    nowtime = time.monotonic()
+    elps = nowtime - lasttime
+    if elps < staytime :
       #print('ホバリング中',staytime)
       keepingYaw(master)
-      staytime = staytime - 1
       return cnt
     else :
       print('ホバリング完了')
@@ -201,6 +204,7 @@ def isStable(master: mavutil.mavfile) :
   global lastYaw
   global lastAlt
   global staytime
+  global lasttime
   global retrytime
   global stableCheck
   # 現在の機体状態を取得する
@@ -210,8 +214,9 @@ def isStable(master: mavutil.mavfile) :
   lastYaw = recv.hdg
   lastAlt = recv.relative_alt
   # 旋回や直進指示に対して動き出すのにタイムラグがあるので最低限時間で待ってから判定する
-  if staytime > 0 :
-    staytime = staytime - 1
+  nowtime = time.monotonic()
+  elps = nowtime - lasttime
+  if elps < staytime :
     stableCnt = stableCheck
     return False
   else :
@@ -262,12 +267,14 @@ def oneshotReq(master: mavutil.mavfile, msgid=mavutil.mavlink.MAVLINK_MSG_ID_GLO
   if ack :
     print("oneshotReq ack :",ack)
 
-def delaySec2Cnt(sec):
-  global tick
+def setStaytime(sec):
   global staytime
   global retrytime
-  staytime =  sec / tick
+  global lasttime
+  staytime =  sec
   retrytime = staytime * 1.5
+  lasttime = time.monotonic()
+
 
 def goTurn(master: mavutil.mavfile,rad) :
     # message SET_POSITION_TARGET_LOCAL_NED 0 0 0 9 2503 0 0 0 0 0 0 0 0 0 3.14159 0
@@ -289,7 +296,7 @@ def goTurn(master: mavutil.mavfile,rad) :
           0,master.target_system, master.target_component,
           mavutil.mavlink.MAV_FRAME_BODY_OFFSET_NED,
           0b100111000111,0,0,0,0,0,0,0,0,0,rad,0)
-    delaySec2Cnt(abs(rad) * 4 / PAI)
+    setStaytime(abs(rad) * 4 / PAI)
 
 def goStraight(master: mavutil.mavfile,dist,alt) :
     global keepYaw
@@ -304,10 +311,10 @@ def goStraight(master: mavutil.mavfile,dist,alt) :
           0b110111111000,dist,0,alt,0,0,0,0,0,0,0,0)
     if alt > 0 :
       # 降下しながら直進の場合は完了するまで遅い
-      delaySec2Cnt(dist)
+      setStaytime(dist)
     else :
       # 高度維持または上昇しながら直進
-      delaySec2Cnt(dist/2)
+      setStaytime(dist/2)
 
 # 機体への接続（単体実行用：親スクリプトで接続していない時実行）
 # SITL : tcp:127.0.0.1:5762
@@ -316,11 +323,13 @@ def setup() -> mavutil.mavfile:
   # master: mavutil.mavfile = mavutil.mavlink_connection(
   #  "/dev/serial0", baud=115200, source_system=1, source_component=90)
   # mavlink-router経由での接続（uart接続はmavlink-routerに任せる）
+  global lasttime
   master: mavutil.mavfile = mavutil.mavlink_connection(
       "tcp:127.0.0.1:5762", source_system=1, source_component=90)
 #      "127.0.0.1:14551", source_system=1, source_component=90)
 
   master.wait_heartbeat()
+  lasttime = time.monotonic()
 
   return master
 
@@ -387,7 +396,7 @@ def flight(master: mavutil.mavfile, delay = 1):
       if ack and ack.command == mavutil.mavlink.MAV_CMD_NAV_TAKEOFF and ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
         flstate = flstate + 1
         print('TAKEOFF')
-        delaySec2Cnt(5)
+        setStaytime(5)
       else :
         print('TAKEOFF FAILED')
         flstate = STATE_INVALID #無効にする 
@@ -396,7 +405,7 @@ def flight(master: mavutil.mavfile, delay = 1):
       if isStable(master) :
           # 離陸OK
           flstate = flstate + 1
-          delaySec2Cnt(5)
+          setStaytime(5)
           print('TAKEOFF done :',target_alt)
     elif flstate == 5 :
       # ホバリング
@@ -526,7 +535,7 @@ def flight(master: mavutil.mavfile, delay = 1):
       # 離陸地点到達確認
       if isStable(master) :
         flstate = flstate + 1
-        delaySec2Cnt(5)
+        setStaytime(5)
         print('離陸地点到達完了')
     elif flstate == 34 :
       # ホバリング
@@ -538,7 +547,7 @@ def flight(master: mavutil.mavfile, delay = 1):
           mavutil.mavlink.MAV_CMD_DO_SET_MODE, 0,
           mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, master.mode_mapping()['LAND'], 0, 0, 0, 0, 0)
       flstate = flstate + 1
-      delaySec2Cnt(10)
+      setStaytime(10)
     elif flstate == 36 :
       # print('着陸確認',staytime)
       if isStable(master) :
@@ -562,5 +571,5 @@ if __name__ == "__main__":
         #print('before')
         flight(master)
         #print('after')
-        time.sleep(0.1)
+        time.sleep(0.05)
 
