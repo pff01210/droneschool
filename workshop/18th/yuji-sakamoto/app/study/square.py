@@ -40,9 +40,7 @@ lasttime = time.monotonic()
 STATE_LAND = 35
 STATE_INVALID = 37
 
-tick = 1 #sleep時間に関わらずHEARTBEATでblockするので１秒をtickとする
-
-flight_mode_dict = {
+mode_map = {
     "STABILIZE": 0,
     "ACRO": 1,
     "ALT_HOLD": 2,
@@ -67,7 +65,7 @@ def deg2rad(deg) :
       deg = deg - 360
     return (deg*PAI)/180
 
-def get_current_flight_mode(master) -> str:
+def get_current_mode(master) -> str:
     """
     フライトコントローラ（component_id = 1）からの HEARTBEAT のみ受け入れて
     現在のフライトモード名を返す（custom_mode -> モード名に変換）
@@ -85,7 +83,7 @@ def get_current_flight_mode(master) -> str:
             return "UNKNOWN"
 
         mode_id = hb.custom_mode
-        mode_name = next((k for k, v in flight_mode_dict.items() if v == mode_id), f"UNKNOWN({mode_id})")
+        mode_name = next((k for k, v in mode_map.items() if v == mode_id), f"UNKNOWN({mode_id})")
         return mode_name
 
 # 機体方向維持
@@ -189,7 +187,7 @@ def isPreArmOk(master: mavutil.mavfile) :
         .format(mavutil.mavlink.MAV_SYS_STATUS_PREARM_CHECK))
       # SYS_STSTUSのonboard_control_sensor_healthをチェックして判断する
       # 判定途中でモードが切り替わっていると動作不正となるので再度モードをチェック
-      if get_current_flight_mode(master) == 'GUIDED' :
+      if get_current_mode(master) == 'GUIDED' :
         return recv.onboard_control_sensors_health & mavutil.mavlink.MAV_SYS_STATUS_PREARM_CHECK
       else :
         print("Error : Invalid Mode Change")
@@ -339,10 +337,8 @@ def flight(master: mavutil.mavfile, delay = 1):
     global lastmode
     global nowmode
     global staytime
-    global tick
     global keepYaw
-    tick = delay
-    nowmode = get_current_flight_mode(master) 
+    nowmode = get_current_mode(master) 
     if lastmode != nowmode :
       print("change :",nowmode)
       lastmode = nowmode
