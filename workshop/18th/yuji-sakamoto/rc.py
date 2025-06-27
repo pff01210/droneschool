@@ -77,7 +77,7 @@ def main():
                 # LED消灯
                 GPIO.output(pinno, 0)
             nowtime = time.monotonic()
-            if (nowtime - lasttime)>=1 :
+            if (nowtime - lasttime)>=0.5 :
                 lcnt = lcnt + 1
                 lasttime = nowtime
             time.sleep(0.05)
