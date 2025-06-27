@@ -321,6 +321,7 @@ def setup() -> mavutil.mavfile:
 #      "127.0.0.1:14551", source_system=1, source_component=90)
 
   master.wait_heartbeat()
+  intervalReq(master)  # GLOBAL_POSITION_INTインターバル要求
 
   return master
 
@@ -557,7 +558,6 @@ if __name__ == "__main__":
     master: mavutil.mavfile = setup()
     print('接続')
     #invalidBeep(master)
-    intervalReq(master)  # GLOBAL_POSITION_INTインターバル要求
     while True:
         #print('before')
         flight(master)
