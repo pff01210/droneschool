@@ -19,7 +19,7 @@ flcnt = 0
 flstate = 0
 lastmode = ""
 nowmode = ""
-target_alt = 5
+TARGET_ALT = 5
 staytime = 0
 retrytime = 0
 PAI = 3.14159265
@@ -28,7 +28,7 @@ TURN2LEFT = -( PAI / 2 )
 INT_DISABLE = -1
 stableCnt = 0
 lastYaw = 0
-lastAlt = 0
+lastAlt = 0 #cm
 stableCheck = 5
 VPASS = 30
 YAWPASS = 20
@@ -336,6 +336,7 @@ def flight(master: mavutil.mavfile, delay = 1):
     global flcnt
     global flstate
     global lastmode
+    global lastAlt
     global nowmode
     global staytime
     global keepYaw
@@ -360,7 +361,8 @@ def flight(master: mavutil.mavfile, delay = 1):
       # 初期の機体状態を取得する
       recv = master.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
       keepYaw = recv.hdg/100
-      print('Initial keepYaw :',keepYaw)
+      lastAlt = recv.relative_alt
+      print('Initial keepYaw :',keepYaw, 'Initiali Alt :',lastAlt)
     elif flstate == 2 :
       # ARM
       if isInvalidFly(master) :
@@ -385,10 +387,11 @@ def flight(master: mavutil.mavfile, delay = 1):
         #master.motors_armed_wait()
     elif flstate == 3 :
       # 離陸（高度5m）
+      takeoffAlt = TARGET_ALT + 3 # 実験との差分があるので高めの設定にする
       master.mav.command_long_send(
           master.target_system, master.target_component,
           mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
-          0, 0, 0, 0, 0, 0, 0, target_alt)
+          0, 0, 0, 0, 0, 0, 0, takeoffAlt)
       ack = master.recv_match(type='COMMAND_ACK', blocking=True, timeout=10)
       if ack and ack.command == mavutil.mavlink.MAV_CMD_NAV_TAKEOFF and ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
         flstate = flstate + 1
@@ -403,7 +406,7 @@ def flight(master: mavutil.mavfile, delay = 1):
           # 離陸OK
           flstate = flstate + 1
           setStaytime(5)
-          print('TAKEOFF done :',target_alt)
+          print('TAKEOFF done :',TARGET_ALT)
     elif flstate == 5 :
       # ホバリング
       flstate = doHobbering(master,flstate)
