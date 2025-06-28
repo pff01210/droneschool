@@ -69,7 +69,7 @@ def send_local_ned(x, y, z, yaw_deg):
         0, 0, 0,
         0, yaw_rad)
 
-def flight(master: mavutil.mavfile):
+def flight8(master: mavutil.mavfile):
     # GUIDEDモードへ
     nowmode = get_current_mode(master)
     if nowmode != 'GUIDED':
@@ -120,6 +120,7 @@ def flight(master: mavutil.mavfile):
     # ホバリングして終了
     send_local_ned(0, 0, -altitude, 0)
     print("八の字2周完了")
+    time.sleep(5)
 
 # 機体への接続（単体実行用：親スクリプトで接続していない時実行）
 # SITL : tcp:127.0.0.1:5762
@@ -143,6 +144,6 @@ if __name__ == "__main__":
     master: mavutil.mavfile = setup()
     print('接続')
     while True:
-        flight(master)
+        flight8(master)
         time.sleep(0.05)
 
